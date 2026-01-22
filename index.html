@@ -37,9 +37,7 @@ button {
 video {
   width: 100%;
   border-radius: 12px;
-
-  transform: scaleX(-1);   /* 👈 좌우 반전 */
-
+  transform: scaleX(-1); /* 전면 카메라 미러 */
 }
 </style>
 </head>
@@ -100,7 +98,7 @@ const MODEL_URL = "https://teachablemachine.withgoogle.com/models/CONDJURfv/";
 
 let model;
 let video = document.getElementById("cam");
-let currentFacing = "user"; // 전면 시작
+let currentFacing = "user"; // 전면 카메라 시작
 let lastCmd = null;
 let lastSent = 0;
 
@@ -163,11 +161,12 @@ async function loop() {
   requestAnimationFrame(loop);
 }
 
+/* ================= 클래스 → BLE 값 ================= */
 function mapClassToCmd(name) {
-  // 👇 여기서 "클래스 1,2,3" 매핑
-  if (name === "Class 1") return 1;
-  if (name === "Class 2") return 2;
-  if (name === "Class 3") return 3;
+  if (name === "Class 1") return 1; // 무음
+  if (name === "Class 2") return 2; // ✌️ 가위 (젤다)
+  if (name === "Class 3") return 3; // ✊ 바위 (마리오)
+  if (name === "Class 4") return 4; // 🖐 보 (갤러그)
   return null;
 }
 </script>
