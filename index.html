@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>Weather Glasses ML</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+
+<style>
+body {
+  margin: 0;
+  padding: 16px;
+  font-family: system-ui, sans-serif;
+  background: #f2f2f2;
+  text-align: center;
+}
+
+.panel {
+  background: white;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+button {
+  width: 100%;
+  min-height: 70px;
+  font-size: 22px;
+  border-radius: 14px;
+  border: none;
+  background: #222;
+  color: white;
+  margin-bottom: 10px;
+}
+
+video {
+  width: 100%;
+  border-radius: 12px;
+
+  transform: scaleX(-1);   /* 👈 좌우 반전 */
+
+}
+</style>
+</head>
+
+<body>
+
+<h2>👓 Weather Glasses ML</h2>
+
+<div class="panel">
+  <button onclick="connectBLE()">🔵 BLE 연결</button>
+  <div id="bleStatus">BLE: 미연결</div>
+</div>
+
+<div class="panel">
+  <button onclick="startML()">📷 카메라 · 인식 시작</button>
+  <button onclick="switchCamera()">🔄 카메라 전환</button>
+  <video id="cam" autoplay playsinline></video>
+</div>
+
+<div class="panel">
+  <div id="result">인식 대기중…</div>
+  <div id="sent">전송값: -</div>
+</div>
+
+<script>
+/* ================= BLE ================= */
+let characteristic = null;
+
+const SERVICE_UUID = '0000a000-0000-1000-8000-00805f9b34fb';
+const CHAR_UUID    = '0000a001-0000-1000-8000-00805f9b34fb';
+
+async function connectBLE() {
+  try {
+    const device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [SERVICE_UUID]
+    });
+
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    characteristic = await service.getCharacteristic(CHAR_UUID);
+
+    document.getElementById('bleStatus').innerText = 'BLE: 연결됨';
+  } catch (e) {
+    document.getElementById('bleStatus').innerText = 'BLE: 연결 실패';
+    console.error(e);
+  }
+}
+
+function sendCmd(v) {
+  if (!characteristic) return;
+  characteristic.writeValue(new Uint8Array([v]));
+  document.getElementById("sent").innerText = "전송값: " + v;
+}
+
+/* ================= ML ================= */
+const MODEL_URL = "https://teachablemachine.withgoogle.com/models/fbQhwvC1g/";
+
+let model;
+let video = document.getElementById("cam");
+let currentFacing = "user"; // 전면 시작
+let lastCmd = null;
+let lastSent = 0;
+
+async function startML() {
+  if (!model) {
+    model = await tmImage.load(
+      MODEL_URL + "model.json",
+      MODEL_URL + "metadata.json"
+    );
+  }
+
+  await startCamera();
+  document.getElementById("result").innerText = "인식 중…";
+  requestAnimationFrame(loop);
+}
+
+async function startCamera() {
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: currentFacing }
+  });
+
+  video.srcObject = stream;
+  await video.play();
+}
+
+function switchCamera() {
+  currentFacing = currentFacing === "user" ? "environment" : "user";
+  startCamera();
+}
+
+async function loop() {
+  if (!model) return;
+
+  const prediction = await model.predict(video);
+  prediction.sort((a, b) => b.probability - a.probability);
+
+  const top = prediction[0];
+  document.getElementById("result").innerText =
+    `${top.className} (${top.probability.toFixed(2)})`;
+
+  const now = Date.now();
+
+  if (
+    top.probability > 0.85 &&
+    top.className !== lastCmd &&
+    now - lastSent > 1200
+  ) {
+    const cmd = mapClassToCmd(top.className);
+    if (cmd !== null) {
+      sendCmd(cmd);
+      lastCmd = top.className;
+      lastSent = now;
+    }
+  }
+
+  requestAnimationFrame(loop);
+}
+
+function mapClassToCmd(name) {
+  // 👇 여기서 "클래스 1,2,3" 매핑
+  if (name === "Class 1") return 1;
+  if (name === "Class 2") return 2;
+  if (name === "Class 3") return 3;
+  return null;
+}
+</script>
+
+</body>
+</html>
